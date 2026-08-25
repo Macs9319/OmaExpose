@@ -43,6 +43,16 @@ Item {
   property int cellHeight: Style.space(180)
   readonly property int columns: Math.max(1, Math.floor(resultGrid.width / Math.max(1, cellWidth)))
 
+  // `hyprctl clients -j` output is entirely client-controlled: any app can
+  // open arbitrarily many windows and/or set an arbitrarily long title/class,
+  // and this is a long-running, shared shell process serving every plugin --
+  // not a short-lived one we can let balloon and exit. maxRawBytes bounds
+  // the string handed to JSON.parse (cheap check before the expensive part);
+  // maxWindows bounds how many entries windowsFromClients() will build after
+  // that, independent of how many were actually present in the JSON.
+  readonly property int maxRawBytes: 5 * 1024 * 1024
+  readonly property int maxWindows: 500
+
   // shell.appLibrary.iconSource() treats a value starting with "/", "file://",
   // or "image://" as a direct image source to load. Window app-ids (WM class)
   // are set by the client application itself -- any app, trusted or not --
@@ -87,7 +97,8 @@ Item {
   // forever) -- a direct hyprctl query avoids that class of bug entirely.
   function windowsFromClients(list) {
     var out = []
-    for (var i = 0; i < list.length; i++) {
+    var limit = Math.min(list.length, root.maxWindows)
+    for (var i = 0; i < limit; i++) {
       var w = list[i]
       if (w.mapped === false) continue
       if (w.hidden === true) continue
@@ -254,8 +265,11 @@ Item {
     stdout: StdioCollector {
       waitForEnd: true
       onStreamFinished: {
+        var raw = String(text || "")
         var parsed = []
-        try { parsed = JSON.parse(String(text || "")) || [] } catch (e) { parsed = [] }
+        if (raw.length <= root.maxRawBytes) {
+          try { parsed = JSON.parse(raw) || [] } catch (e) { parsed = [] }
+        }
         root.windows = root.windowsFromClients(Array.isArray(parsed) ? parsed : [])
         if (root.opened) root.rebuildDisplay()
       }
