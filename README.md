@@ -23,6 +23,20 @@ Then bind a key (optional — the hot corner works without one):
 o.bind("SUPER + E", "Expose", "omarchy-shell shell toggle ronnie.expose")
 ```
 
+## Remove
+
+```
+omarchy plugin remove ronnie.expose
+```
+
+If you added the optional keybinding above, remove that line from
+`~/.config/hypr/bindings.lua` too.
+
+## License and dependencies
+
+MIT — see [LICENSE](LICENSE). No dependencies beyond `hyprctl`, which
+ships with Hyprland/Omarchy itself; nothing else is installed or required.
+
 ## How it works
 
 - `Expose.qml` — the overlay itself. Window data is a fresh `hyprctl clients
