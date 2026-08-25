@@ -1,0 +1,18 @@
+{
+  "schemaVersion": 1,
+  "id": "ronnie.expose",
+  "name": "Expose",
+  "version": "1.0.0",
+  "author": "ronnie",
+  "license": "MIT",
+  "description": "macOS-style window overview: hot corner, type-to-search, Space for Quick Look",
+  "kinds": [
+    "overlay",
+    "service"
+  ],
+  "keepLoaded": true,
+  "entryPoints": {
+    "overlay": "Expose.qml",
+    "service": "HotCorner.qml"
+  }
+}
