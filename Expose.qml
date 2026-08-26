@@ -161,7 +161,9 @@ Item {
   }
 
   function refreshWindows() {
-    if (!clientsProc.running) clientsProc.running = true
+    if (clientsProc.running) return
+    clientsProc.killedForSize = false
+    clientsProc.running = true
   }
 
   function open(payloadJson) {
@@ -261,14 +263,29 @@ Item {
 
   Process {
     id: clientsProc
+    // Was: StdioCollector { waitForEnd: true }, checking text.length only in
+    // onStreamFinished. That check ran only after the collector had already
+    // buffered the entire (potentially hostile-sized) stream -- a client
+    // controls how many windows exist and how long its own title/class
+    // strings are, so an unbounded producer means unbounded memory held by
+    // this long-running, shared shell process before the check ever fires.
+    // waitForEnd: false exposes `text` incrementally as chunks arrive, so we
+    // can SIGKILL the producer the moment it crosses maxRawBytes instead of
+    // waiting for it to finish on its own.
+    property bool killedForSize: false
     command: ["hyprctl", "clients", "-j"]
     stdout: StdioCollector {
-      waitForEnd: true
+      waitForEnd: false
+      onDataChanged: {
+        if (!clientsProc.killedForSize && text.length > root.maxRawBytes) {
+          clientsProc.killedForSize = true
+          clientsProc.signal(9) // SIGKILL -- stop the producer, don't let more accumulate
+        }
+      }
       onStreamFinished: {
-        var raw = String(text || "")
         var parsed = []
-        if (raw.length <= root.maxRawBytes) {
-          try { parsed = JSON.parse(raw) || [] } catch (e) { parsed = [] }
+        if (!clientsProc.killedForSize) {
+          try { parsed = JSON.parse(String(text || "")) || [] } catch (e) { parsed = [] }
         }
         root.windows = root.windowsFromClients(Array.isArray(parsed) ? parsed : [])
         if (root.opened) root.rebuildDisplay()
