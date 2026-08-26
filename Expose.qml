@@ -161,9 +161,7 @@ Item {
   }
 
   function refreshWindows() {
-    if (clientsProc.running) return
-    clientsProc.killedForSize = false
-    clientsProc.running = true
+    if (!clientsProc.running) clientsProc.running = true
   }
 
   function open(payloadJson) {
@@ -263,30 +261,29 @@ Item {
 
   Process {
     id: clientsProc
-    // Was: StdioCollector { waitForEnd: true }, checking text.length only in
-    // onStreamFinished. That check ran only after the collector had already
-    // buffered the entire (potentially hostile-sized) stream -- a client
-    // controls how many windows exist and how long its own title/class
-    // strings are, so an unbounded producer means unbounded memory held by
-    // this long-running, shared shell process before the check ever fires.
-    // waitForEnd: false exposes `text` incrementally as chunks arrive, so we
-    // can SIGKILL the producer the moment it crosses maxRawBytes instead of
-    // waiting for it to finish on its own.
-    property bool killedForSize: false
-    command: ["hyprctl", "clients", "-j"]
+    // A hostile client controls window count and title/class length, so
+    // `hyprctl clients -j`'s output size is entirely attacker-influenced.
+    // Checking length in QML -- even per-chunk, reacting to
+    // StdioCollector's onDataChanged -- still means the collector has
+    // already accepted whatever chunk crossed the threshold into its own
+    // buffer before our code can respond; that's a Quickshell-side check
+    // reacting after the fact, not a producer-side ceiling. `head -c`
+    // enforces the byte limit at the OS pipe level, before any of it
+    // reaches Quickshell at all: head reads at most maxRawBytes from the
+    // pipe and then closes its end, so hyprctl gets SIGPIPE/EPIPE on its
+    // next write once that happens -- this process's stdout, and thus
+    // StdioCollector's buffer, can never carry more than maxRawBytes to
+    // begin with. root.maxRawBytes is a fixed internal constant here, not
+    // external input, so splicing it into this static pipeline is safe.
+    command: ["bash", "-c", "hyprctl clients -j | head -c " + root.maxRawBytes]
     stdout: StdioCollector {
-      waitForEnd: false
-      onDataChanged: {
-        if (!clientsProc.killedForSize && text.length > root.maxRawBytes) {
-          clientsProc.killedForSize = true
-          clientsProc.signal(9) // SIGKILL -- stop the producer, don't let more accumulate
-        }
-      }
+      waitForEnd: true
       onStreamFinished: {
+        // A stream that hit the head -c ceiling is truncated mid-object and
+        // will fail to parse as JSON -- the correct, fail-safe outcome for
+        // a capped run, not something to special-case around.
         var parsed = []
-        if (!clientsProc.killedForSize) {
-          try { parsed = JSON.parse(String(text || "")) || [] } catch (e) { parsed = [] }
-        }
+        try { parsed = JSON.parse(String(text || "")) || [] } catch (e) { parsed = [] }
         root.windows = root.windowsFromClients(Array.isArray(parsed) ? parsed : [])
         if (root.opened) root.rebuildDisplay()
       }
