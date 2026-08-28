@@ -2,7 +2,7 @@
 
 A macOS-style window overview for [Omarchy](https://omarchy.org/) / Hyprland.
 
-![Expose overview](screen.png)
+![Expose overview](preview.png)
 
 Trigger it with the top-left hot corner or `SUPER + E`. Type to filter
 windows by title or app id, hit `Enter` to focus one (switching workspace
